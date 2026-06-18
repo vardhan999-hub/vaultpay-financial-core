@@ -14,10 +14,14 @@ const supabaseAdmin = createClient(
 
 export async function POST(req: NextRequest) {
   const body = await req.text()
+
   const signature = req.headers.get('stripe-signature')
 
   if (!signature) {
-    return NextResponse.json({ error: 'Missing signature' }, { status: 400 })
+    return NextResponse.json(
+      { error: 'Missing signature' },
+      { status: 400 }
+    )
   }
 
   let event: Stripe.Event
@@ -29,118 +33,189 @@ export async function POST(req: NextRequest) {
       process.env.STRIPE_WEBHOOK_SECRET!
     )
   } catch (err) {
-    console.error('[Webhook] Signature verification failed:', err)
-    return NextResponse.json({ error: 'Webhook signature failed' }, { status: 400 })
+    console.error(
+      '[Webhook] Signature verification failed:',
+      err
+    )
+
+    return NextResponse.json(
+      { error: 'Webhook signature failed' },
+      { status: 400 }
+    )
   }
+
+  console.log('\n==============================')
+  console.log('[Webhook] Event:', event.type)
+  console.log('==============================\n')
 
   if (event.type !== 'checkout.session.completed') {
     return NextResponse.json({ received: true })
   }
 
-  const session = event.data.object as Stripe.Checkout.Session
+  const session =
+    event.data.object as Stripe.Checkout.Session
+
   const invoiceId = session.metadata?.invoiceId
 
-  console.log(`[Webhook] checkout.session.completed for invoice ${invoiceId}, status: ${session.payment_status}`)
+  console.log(
+    `[Webhook] checkout.session.completed`
+  )
+
+  console.log('SESSION ID:', session.id)
+  console.log('PAYMENT STATUS:', session.payment_status)
+  console.log('METADATA:', session.metadata)
+  console.log('INVOICE ID:', invoiceId)
 
   if (!invoiceId) {
-    console.error('[Webhook] invoiceId missing from session metadata')
-    return NextResponse.json({ error: 'invoiceId missing' }, { status: 400 })
+    console.error(
+      '[Webhook] invoiceId missing from metadata'
+    )
+
+    return NextResponse.json(
+      { error: 'invoiceId missing' },
+      { status: 400 }
+    )
   }
 
   if (session.payment_status !== 'paid') {
     return NextResponse.json({ received: true })
   }
 
-  const { data: existingPayment } = await supabaseAdmin
-    .from('payments')
-    .select('id')
-    .eq('stripe_session_id', session.id)
-    .maybeSingle()
+  // Prevent duplicate webhook processing
+  const { data: existingPayment } =
+    await supabaseAdmin
+      .from('payments')
+      .select('id')
+      .eq('stripe_session_id', session.id)
+      .maybeSingle()
 
   if (existingPayment) {
+    console.log(
+      '[Webhook] Payment already processed'
+    )
+
     return NextResponse.json({ received: true })
   }
 
-  const amount = (session.amount_total ?? 0) / 100
+  const amount =
+    (session.amount_total ?? 0) / 100
 
-  const { error: invoiceError } = await supabaseAdmin
-    .from('invoices')
-    .update({
-      status: 'paid',
-      paid_at: new Date().toISOString(),
-      active_stripe_session_id: null,
-    })
-    .eq('id', invoiceId)
+  // Update invoice
+  const { error: invoiceError } =
+    await supabaseAdmin
+      .from('invoices')
+      .update({
+        status: 'paid',
+        paid_at: new Date().toISOString(),
+        active_stripe_session_id: null,
+      })
+      .eq('id', invoiceId)
 
   if (invoiceError) {
-    console.error('[Webhook] Invoice update failed:', invoiceError)
-    return NextResponse.json({ error: 'Invoice update failed' }, { status: 500 })
+    console.error(
+      '[Webhook] Invoice update failed:',
+      invoiceError
+    )
+
+    return NextResponse.json(
+      { error: 'Invoice update failed' },
+      { status: 500 }
+    )
   }
 
-  const { error: paymentError } = await supabaseAdmin
-    .from('payments')
-    .insert({
-      invoice_id: invoiceId,
-      stripe_session_id: session.id,
-      amount,
-      status: 'completed',
-    })
+  console.log(
+    '[Webhook] Invoice marked as paid'
+  )
+
+  // Insert payment row
+  const { error: paymentError } =
+    await supabaseAdmin
+      .from('payments')
+      .insert({
+        invoice_id: invoiceId,
+        stripe_session_id: session.id,
+        amount,
+        status: 'completed',
+      })
 
   if (paymentError) {
-    console.error('[Webhook] Payment insert failed:', paymentError)
+    console.error(
+      '[Webhook] Payment insert failed:',
+      paymentError
+    )
+  } else {
+    console.log(
+      '[Webhook] Payment saved'
+    )
   }
 
-  const { data: invoice } = await supabaseAdmin
-    .from('invoices')
-    .select('*')
-    .eq('id', invoiceId)
-    .single()
+  // Fetch invoice
+  const { data: invoice } =
+    await supabaseAdmin
+      .from('invoices')
+      .select('*')
+      .eq('id', invoiceId)
+      .single()
 
   if (invoice) {
-  try {
-    console.log('[Webhook] About to generate PDF')
+    try {
+      console.log(
+        '[Webhook] About to generate PDF'
+      )
 
-    const pdfBuffer = await generateInvoicePdfBuffer(invoice)
+      const pdfBuffer =
+        await generateInvoicePdfBuffer(invoice)
 
-    console.log(
-      '[Webhook] PDF generated:',
-      pdfBuffer.length,
-      'bytes'
-    )
+      console.log(
+        '[Webhook] PDF generated:',
+        pdfBuffer.length,
+        'bytes'
+      )
 
-    console.log(
-      '[Webhook] About to send email to:',
-      invoice.client_email
-    )
+      console.log(
+        '[Webhook] About to send email to:',
+        invoice.client_email
+      )
 
-    console.log(
-      '[Webhook] RESEND_API_KEY exists:',
-      !!process.env.RESEND_API_KEY
-    )
+      console.log(
+        '[Webhook] RESEND_API_KEY exists:',
+        !!process.env.RESEND_API_KEY
+      )
 
-    const result = await sendInvoiceReceiptEmail({
-      to: invoice.client_email,
-      clientName: invoice.client_name,
-      invoiceNumber: invoice.invoice_number,
-      amount: invoice.amount,
-      pdfBuffer,
-    })
+      const result =
+        await sendInvoiceReceiptEmail({
+          to: invoice.client_email,
+          clientName: invoice.client_name,
+          invoiceNumber:
+            invoice.invoice_number,
+          amount: invoice.amount,
+          pdfBuffer,
+        })
 
-    console.log('[Webhook] Email result:', result)
+      console.log(
+        '[Webhook] Email result:',
+        result
+      )
 
-    if (result.success) {
-      console.log('[Webhook] Email sent successfully')
-    } else {
+      if (result.success) {
+        console.log(
+          '[Webhook] Email sent successfully'
+        )
+      } else {
+        console.error(
+          '[Webhook] Email failed:',
+          result.error
+        )
+      }
+    } catch (err) {
       console.error(
-        '[Webhook] Email failed:',
-        result.error
+        '[Webhook] PDF generation or email failed:',
+        err
       )
     }
-  } catch (err) {
-    console.error(
-      '[Webhook] PDF generation or email failed:',
-      err
-    )
   }
-}ved: true })
+
+  return NextResponse.json({
+    received: true,
+  })
 }
