@@ -97,24 +97,50 @@ export async function POST(req: NextRequest) {
     .single()
 
   if (invoice) {
-    try {
-      const pdfBuffer = await generateInvoicePdfBuffer(invoice)
+  try {
+    console.log('[Webhook] About to generate PDF')
 
-      const result = await sendInvoiceReceiptEmail({
-        to: invoice.client_email,
-        clientName: invoice.client_name,
-        invoiceNumber: invoice.invoice_number,
-        amount: invoice.amount,
-        pdfBuffer,
-      })
+    const pdfBuffer = await generateInvoicePdfBuffer(invoice)
 
-      if (!result.success) {
-        console.error('[Webhook] Email failed:', result.error)
-      }
-    } catch (err) {
-      console.error('[Webhook] PDF generation or email failed:', err)
+    console.log(
+      '[Webhook] PDF generated:',
+      pdfBuffer.length,
+      'bytes'
+    )
+
+    console.log(
+      '[Webhook] About to send email to:',
+      invoice.client_email
+    )
+
+    console.log(
+      '[Webhook] RESEND_API_KEY exists:',
+      !!process.env.RESEND_API_KEY
+    )
+
+    const result = await sendInvoiceReceiptEmail({
+      to: invoice.client_email,
+      clientName: invoice.client_name,
+      invoiceNumber: invoice.invoice_number,
+      amount: invoice.amount,
+      pdfBuffer,
+    })
+
+    console.log('[Webhook] Email result:', result)
+
+    if (result.success) {
+      console.log('[Webhook] Email sent successfully')
+    } else {
+      console.error(
+        '[Webhook] Email failed:',
+        result.error
+      )
     }
+  } catch (err) {
+    console.error(
+      '[Webhook] PDF generation or email failed:',
+      err
+    )
   }
-
-  return NextResponse.json({ received: true })
+}ved: true })
 }
