@@ -36,7 +36,7 @@ event = stripe.webhooks.constructEvent(body, sig, process.env.STRIPE_WEBHOOK_SEC
 ```
 
 **Why it matters for this project:**
-Without signature verification, any attacker who knows my webhook URL could POST a fake `checkout.session.completed` event and mark any invoice as paid without payment ever occurring. This directly violates the Week 20 requirement: "if a payment is marked paid fraudulently, your project will be instantly rejected."
+Without signature verification, any attacker who knows my webhook URL could POST a fake `checkout.session.completed` event and mark any invoice as paid without payment ever occurring. This directly violates the Client Delivery Phase III requirement: "if a payment is marked paid fraudulently, your project will be instantly rejected."
 
 ---
 
@@ -258,5 +258,5 @@ AI was used as a learning and productivity assistant only.
 All code was reviewed, modified, tested, and integrated manually by me.  
 The final implementation decisions, architecture, testing, and deployment were performed independently.
 
-**Developer:**Tadigadapa Harsha Vardhan  
+**Developer:** Tadigadapa Harsha Vardhan  
 **Role:** Frontend Development Intern — Prodesk IT
