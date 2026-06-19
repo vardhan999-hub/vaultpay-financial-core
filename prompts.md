@@ -249,3 +249,14 @@ return NextResponse.json({ received: true })  // always 200 to Stripe
 | RLS design | No UPDATE policy prevents role escalation | RPC for safe field updates; REVOKE INSERT on profiles |
 | Email attachment | Buffer passes directly to Resend; email must never fail the webhook | try-catch wrapping; always return 200 |
 
+---
+
+## Declaration
+
+AI was used as a learning and productivity assistant only.
+
+All code was reviewed, modified, tested, and integrated manually by me.  
+The final implementation decisions, architecture, testing, and deployment were performed independently.
+
+**Developer:**Tadigadapa Harsha Vardhan  
+**Role:** Frontend Development Intern — Prodesk IT
